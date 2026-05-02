@@ -1,5 +1,4 @@
-# 🧠 FocusGuard AI (FocusLens)
-
+# 🧠 FocusLens AI 
 ## 📌 Overview
 
 **FocusGuard AI (FocusLens)** is a real-time AI-powered attention monitoring system that analyzes user focus, engagement, and distraction using computer vision and behavioral analytics.
