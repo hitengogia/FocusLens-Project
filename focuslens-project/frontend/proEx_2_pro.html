@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FocusLens — Meeting Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<style>
+/* ── Variables ───────────────────────────────────────────────────────────── */
+:root {
+  --bg:       #0c0d10;
+  --surface:  #111318;
+  --surface2: #16181f;
+  --border:   #1e2230;
+  --border2:  #252b3a;
+  --accent:   #3b82f6;
+  --accent-dim: rgba(59,130,246,.12);
+  --success:  #34d399;
+  --success-dim: rgba(52,211,153,.1);
+  --warning:  #f59e0b;
+  --warning-dim: rgba(245,158,11,.1);
+  --danger:   #f43f5e;
+  --danger-dim: rgba(244,63,94,.1);
+  --text:     #e2e8f0;
+  --text-2:   #94a3b8;
+  --text-3:   #475569;
+  --radius:   8px;
+  --radius-sm: 5px;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.app { max-width: 1340px; margin: 0 auto; padding: 24px 20px; }
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 34px; height: 34px; border-radius: 7px;
+  background: var(--accent);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.logo-mark svg { display: block; }
+.logo-text {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+}
+.logo-text span { color: var(--accent); }
+
+.header-right { display: flex; align-items: center; gap: 12px; }
+
+#backendBadge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+
+.session-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 5px 12px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+}
+.session-badge .dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  margin-right: 7px;
+  flex-shrink: 0;
+}
+.session-badge.live {
+  color: var(--success);
+  border-color: rgba(52,211,153,.3);
+  background: rgba(52,211,153,.06);
+}
+.session-badge.live .dot {
+  background: var(--success);
+  animation: blink 1.4s infinite;
+}
+.session-badge.ended { color: var(--text-3); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* ── Main Grid ───────────────────────────────────────────────────────────── */
+.main-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.left-col, .right-col { display: flex; flex-direction: column; gap: 12px; }
+
+/* ── Panel ───────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.panel-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.panel-head-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  letter-spacing: 0.1px;
+}
+.panel-head-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.panel-body { padding: 14px; }
+
+/* ── Camera ──────────────────────────────────────────────────────────────── */
+.cam-wrapper {
+  position: relative;
+  background: #070809;
+  aspect-ratio: 4/3;
+  overflow: hidden;
+}
+#videoEl {
+  width: 100%; height: 100%;
+  display: block;
+  transform: scaleX(-1);
+  object-fit: cover;
+}
+#overlayCanvas {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+.cam-label {
+  position: absolute;
+  bottom: 10px; left: 10px;
+  background: rgba(0,0,0,.7);
+  border: 1px solid var(--border2);
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  letter-spacing: 0.3px;
+  z-index: 2;
+}
+.cam-ph {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 10px;
+  color: var(--text-3);
+  font-size: 13px;
+  z-index: 1;
+}
+.cam-ph svg { opacity: .25; }
+
+.loading-ovl {
+  position: absolute; inset: 0;
+  background: rgba(7,8,9,.92);
+  display: none;
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px;
+  z-index: 10;
+}
+.loading-ovl.active { display: flex; }
+.spinner {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: var(--text-3);
+  letter-spacing: 0.3px;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+}
+.status-bar-label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.status-pill {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  transition: all .25s;
+}
+.status-pill.focused    { background: var(--success-dim); color: var(--success); }
+.status-pill.distracted { background: var(--danger-dim);  color: var(--danger);  }
+.status-pill.away       { background: var(--warning-dim); color: var(--warning); }
+.status-pill.idle       { background: rgba(71,85,105,.12); color: var(--text-3); }
+
+/* ── Distraction Timer Bar ───────────────────────────────────────────────── */
+.distraction-bar-wrap {
+  height: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.distraction-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--warning);
+  transition: width .4s linear, background .3s;
+}
+.distraction-bar-fill.alerting { background: var(--danger); }
+
+/* ── Sound Toggle ────────────────────────────────────────────────────────── */
+.sound-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  transition: all .15s;
+  line-height: 1;
+}
+.sound-btn:hover { color: var(--text-2); border-color: var(--border2); }
+.sound-btn.muted { color: var(--text-3); opacity: .5; }
+
+.timer-display {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.btn {
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  letter-spacing: 0;
+}
+.btn-start {
+  grid-column: 1/-1;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn-start:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+.btn-start:disabled { opacity: .35; cursor: not-allowed; }
+
+.btn-end {
+  background: var(--danger-dim);
+  color: var(--danger);
+  border-color: rgba(244,63,94,.2);
+}
+.btn-end:hover:not(:disabled) { background: rgba(244,63,94,.18); }
+.btn-end:disabled { opacity: .3; cursor: not-allowed; }
+
+.btn-export {
+  background: transparent;
+  color: var(--text-2);
+  border-color: var(--border2);
+}
+.btn-export:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+.btn-export:disabled { opacity: .3; cursor: not-allowed; }
+
+/* ── Gaze Grid ───────────────────────────────────────────────────────────── */
+.gaze-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 4px;
+  aspect-ratio: 3/2;
+}
+.gaze-cell {
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.2px;
+  transition: all .18s;
+}
+.gaze-cell.center-cell {
+  background: rgba(59,130,246,.04);
+  border-color: rgba(59,130,246,.15);
+  color: var(--text-3);
+}
+.gaze-cell.active {
+  background: rgba(59,130,246,.14);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.gaze-cell.active-warn {
+  background: var(--warning-dim);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+/* ── Score Ring ──────────────────────────────────────────────────────────── */
+.score-panel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 20px;
+  align-items: center;
+}
+.score-ring { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+.score-ring svg { transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: var(--border2); stroke-width: 7; }
+.ring-fill  {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-dasharray: 283;
+  stroke-dashoffset: 283;
+  transition: stroke-dashoffset .5s ease, stroke .4s;
+}
+.score-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.score-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1.6rem;
+  font-weight: 500;
+  line-height: 1;
+}
+.score-lbl {
+  font-size: 10px;
+  color: var(--text-3);
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.score-meta { display: flex; flex-direction: column; gap: 8px; }
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.meta-row:last-child { border-bottom: none; padding-bottom: 0; }
+.mk { font-size: 12px; color: var(--text-3); font-weight: 500; }
+.mv {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ── Metrics Grid ────────────────────────────────────────────────────────── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.metric-label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: 0.2px;
+}
+.metric-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.metric-sub { font-size: 11px; color: var(--text-3); }
+
+/* ── Timeline ────────────────────────────────────────────────────────────── */
+#timelineCanvas { width: 100%; height: 80px; display: block; }
+
+/* ── Log ─────────────────────────────────────────────────────────────────── */
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 130px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  animation: fadeSlide .18s ease;
+}
+@keyframes fadeSlide { from{opacity:0;transform:translateX(-4px)} to{opacity:1;transform:none} }
+
+.log-time {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-3);
+  min-width: 40px;
+}
+.log-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tag-info     { background: var(--accent-dim);   color: var(--accent); }
+.tag-alert    { background: var(--warning-dim);   color: var(--warning); }
+.tag-distract { background: var(--danger-dim);    color: var(--danger); }
+.tag-focused  { background: var(--success-dim);   color: var(--success); }
+
+/* ── History Panel ───────────────────────────────────────────────────────── */
+#historyPanel { display: none; }
+
+.summ-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.summ-card {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 11px 13px;
+}
+.summ-label {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.summ-val {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.history-table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  letter-spacing: 0.1px;
+}
+.history-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(30,34,48,.7);
+  color: var(--text-2);
+}
+.history-table tr:hover td { background: rgba(255,255,255,.02); }
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 100;
+  place-items: center;
+  backdrop-filter: blur(6px);
+}
+.modal-overlay.open { display: grid; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 24px;
+  width: 560px;
+  max-width: 95vw;
+  animation: modalIn .2s ease;
+}
+@keyframes modalIn { from{opacity:0;transform:scale(.97) translateY(6px)} to{opacity:1;transform:none} }
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-title svg { color: var(--accent); }
+
+.json-block {
+  background: #070809;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.75;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 340px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.json-block .k  { color: var(--text-2); }
+.json-block .vn { color: var(--accent); }
+.json-block .vs { color: var(--success); }
+
+.modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+.btn-modal {
+  flex: 1;
+  padding: 9px;
+  border-radius: var(--radius);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  border: 1px solid;
+}
+.btn-modal.copy {
+  border-color: rgba(59,130,246,.3);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+.btn-modal.copy:hover { background: rgba(59,130,246,.2); }
+.btn-modal.download {
+  border-color: rgba(52,211,153,.25);
+  background: var(--success-dim);
+  color: var(--success);
+}
+.btn-modal.download:hover { background: rgba(52,211,153,.18); }
+.btn-modal.close {
+  border-color: var(--border2);
+  background: transparent;
+  color: var(--text-3);
+  flex: 0 0 auto;
+  padding: 9px 18px;
+}
+.btn-modal.close:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .main-grid    { grid-template-columns: 1fr; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .summ-grid    { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .controls     { grid-template-columns: 1fr; }
+  .btn-start    { grid-column: 1; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Header ── -->
+  <header>
+    <div class="logo">
+      <div class="logo-mark">
+        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/>
+        </svg>
+      </div>
+      <div class="logo-text">Focus<span>Lens</span></div>
+    </div>
+    <div class="header-right">
+      <span id="backendBadge" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-3)">● Checking...</span>
+      <div class="session-badge" id="sessionBadge"><span class="dot"></span>Standby</div>
+    </div>
+  </header>
+
+  <!-- ── Main Grid ── -->
+  <div class="main-grid">
+
+    <!-- ════ LEFT COLUMN ════ -->
+    <div class="left-col">
+
+      <!-- Camera Feed -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-head-title">Camera Feed</span>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button id="soundToggle" class="sound-btn" title="Toggle sound alerts">
+              <!-- bell-on icon -->
+              <svg id="iconSoundOn" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+              </svg>
+              <!-- bell-off icon (hidden by default) -->
+              <svg id="iconSoundOff" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="display:none">
+                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0M3 3l18 18"/>
+              </svg>
+            </button>
+            <span class="timer-display" id="timerDisplay">00:00:00</span>
+          </div>
+        </div>
+        <div class="cam-wrapper">
+          <video id="videoEl" autoplay muted playsinline></video>
+          <canvas id="overlayCanvas"></canvas>
+          <div class="cam-label" id="camLabel">Ready</div>
+          <div class="cam-ph" id="camPlaceholder">
+            <svg width="46" height="46" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+                d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+            </svg>
+            <span>Camera not started</span>
+          </div>
+          <div class="loading-ovl" id="loadingOverlay">
+            <div class="spinner"></div>
+            <div class="loading-text" id="loadingText">Loading models...</div>
+          </div>
+        </div>
+        <div class="status-bar">
+          <span class="status-bar-label">Status</span>
+          <span class="status-pill idle" id="statusPill">Idle</span>
+        </div>
+        <div class="distraction-bar-wrap">
+          <div class="distraction-bar-fill" id="distractionBar"></div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls">
+        <button class="btn btn-start" id="btnStart">
+          <svg width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M3 2.5l11 5.5-11 5.5V2.5z"/></svg>
+          Start Session
+        </button>
+        <button class="btn btn-end" id="btnEnd" disabled>
+          <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12"/></svg>
+          End
+        </button>
+        <button class="btn btn-export" id="btnExport" disabled>
+          <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15V3m0 12l-4-4m4 4l4-4M2 17l.621 2.485A2 2 0 004.561 21h14.878a2 2 0 001.94-1.515L22 17"/></svg>
+          Export Report
+        </button>
+      </div>
+
+      <!-- Gaze Direction -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-head-title">Gaze Direction</span>
+          <span id="gazeZoneVal" class="panel-head-meta" style="color:var(--text-2)">—</span>
+        </div>
+        <div class="panel-body">
+          <div class="gaze-grid">
+            <div class="gaze-cell" data-pos="TL">NW</div>
+            <div class="gaze-cell" data-pos="TC">N</div>
+            <div class="gaze-cell" data-pos="TR">NE</div>
+            <div class="gaze-cell" data-pos="ML">W</div>
+            <div class="gaze-cell center-cell" data-pos="MC">CTR</div>
+            <div class="gaze-cell" data-pos="MR">E</div>
+            <div class="gaze-cell" data-pos="BL">SW</div>
+            <div class="gaze-cell" data-pos="BC">S</div>
+            <div class="gaze-cell" data-pos="BR">SE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Log -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-head-title">Event Log</span>
+        </div>
+        <div class="panel-body" style="padding-bottom:10px">
+          <div class="log-list" id="logList">
+            <div class="log-entry">
+              <span class="log-time">--:--</span>
+              <span class="log-tag tag-info">System</span>
+              <span>Waiting to start...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /left-col -->
+
+    <!-- ════ RIGHT COLUMN ════ -->
+    <div class="right-col">
+
+      <!-- Engagement Score -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-head-title">Engagement Score</span>
+        </div>
+        <div class="panel-body">
+          <div class="score-panel">
+            <div class="score-ring">
+              <svg width="100" height="100" viewBox="0 0 106 106">
+                <circle class="ring-track" cx="53" cy="53" r="45"/>
+                <circle class="ring-fill" id="scoreRingFill" cx="53" cy="53" r="45"/>
+              </svg>
+              <div class="score-center">
+                <div class="score-num" id="scoreNum" style="color:var(--text-3)">--</div>
+                <div class="score-lbl">score</div>
+              </div>
+            </div>
+            <div class="score-meta">
+              <div class="meta-row"><span class="mk">Focus State</span><span class="mv" id="focusStateVal" style="color:var(--text-3)">—</span></div>
+              <div class="meta-row"><span class="mk">Expression</span> <span class="mv" id="expressionVal"  style="color:var(--text-3)">—</span></div>
+              <div class="meta-row"><span class="mk">Gaze Zone</span>  <span class="mv" id="gazeZoneVal2"   style="color:var(--text-3)">—</span></div>
+              <div class="meta-row"><span class="mk">Absent Time</span><span class="mv" id="absentTimeVal"  style="color:var(--text-3)">0s</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Focus %</div>
+          <div class="metric-value" id="metFocusPct"     style="color:var(--success)">0%</div>
+          <div class="metric-sub">of session time</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Distractions</div>
+          <div class="metric-value" id="metDistractions" style="color:var(--danger)">0</div>
+          <div class="metric-sub">total events</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Avg Score</div>
+          <div class="metric-value" id="metAvgScore"     style="color:var(--warning)">--</div>
+          <div class="metric-sub">engagement</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Alerts</div>
+          <div class="metric-value" id="metAlerts"       style="color:var(--danger)">0</div>
+          <div class="metric-sub">look-away events</div>
+        </div>
+      </div>
+
+      <!-- Focus Timeline -->
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-head-title">Focus Timeline</span>
+          <span class="panel-head-meta">--- 60% threshold</span>
+        </div>
+        <div class="panel-body" style="padding:10px 14px">
+          <canvas id="timelineCanvas" height="80"></canvas>
+        </div>
+      </div>
+
+      <!-- Session History -->
+      <div id="historyPanel">
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-head-title">Session History</span>
+            <span class="panel-head-meta">Backend analytics</span>
+          </div>
+          <div class="panel-body">
+            <div class="summ-grid">
+              <div class="summ-card"><div class="summ-label">Avg Focus</div> <div class="summ-val" id="summAvgFocus">--</div></div>
+              <div class="summ-card"><div class="summ-label">Avg Score</div> <div class="summ-val" id="summAvgScore">--</div></div>
+              <div class="summ-card"><div class="summ-label">Sessions</div>  <div class="summ-val" id="summSessions">0</div></div>
+              <div class="summ-card"><div class="summ-label">Distractions</div><div class="summ-val" id="summDistracts" style="color:var(--danger)">0</div></div>
+            </div>
+            <table class="history-table">
+              <thead>
+                <tr><th>Date</th><th>Duration</th><th>Focus %</th><th>Score</th><th>Grade</th><th>Distractions</th></tr>
+              </thead>
+              <tbody id="historyBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /right-col -->
+  </div><!-- /main-grid -->
+</div><!-- /app -->
+
+<!-- ── Export Modal ── -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M8 12h8"/>
+        </svg>
+        Session Report
+      </div>
+    </div>
+    <div class="json-block" id="jsonOutput">Loading…</div>
+    <div class="modal-actions">
+      <button class="btn-modal copy"     id="btnCopy">Copy JSON</button>
+      <button class="btn-modal download" id="btnDownload">Download</button>
+      <button class="btn-modal close"    id="btnCloseModal">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   API CLIENT
+════════════════════════════════════════════════════════════════ */
+const API_BASE = 'http://127.0.0.1:5000/api';
+
+let _frameBatch = [], _batchTimer = null;
+const BATCH_MS = 2000, BATCH_MAX = 30;
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API_BASE + path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+const SessionAPI = {
+  create : (uid = 'default') => apiFetch('/sessions', { method:'POST', body: JSON.stringify({ user_id: uid }) }),
+  end    : (id, p = {})      => apiFetch(`/sessions/${id}/end`, { method:'POST', body: JSON.stringify(p) }),
+  list   : (uid, n = 8)      => apiFetch(`/sessions?user_id=${uid}&limit=${n}`),
+};
+const FrameAPI = {
+  enqueue(sid, frame) {
+    _frameBatch.push({ ...frame, ts: new Date().toISOString() });
+    if (_frameBatch.length >= BATCH_MAX) this.flush(sid);
+    else if (!_batchTimer) _batchTimer = setTimeout(() => this.flush(sid), BATCH_MS);
+  },
+  async flush(sid) {
+    clearTimeout(_batchTimer); _batchTimer = null;
+    if (!_frameBatch.length) return;
+    const frames = [..._frameBatch]; _frameBatch = [];
+    apiFetch(`/sessions/${sid}/frames`, { method:'POST', body: JSON.stringify({ frames }) })
+      .catch(e => console.warn('[FrameAPI]', e.message));
+  },
+};
+const EventAPI = {
+  log: (sid, type, msg) =>
+    apiFetch(`/sessions/${sid}/events`, { method:'POST', body: JSON.stringify({ event_type: type, message: msg }) })
+      .catch(() => {}),
+};
+const ReportAPI = {
+  report : sid  => apiFetch(`/sessions/${sid}/report`),
+  summary: uid  => apiFetch(`/analytics/summary?user_id=${uid}`),
+};
+async function checkBackend() {
+  try { const d = await apiFetch('/health'); return d.status === 'ok'; } catch { return false; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════════════ */
+const S = {
+  running:false, modelsLoaded:false, sessionId:null, sessionStart:null,
+  timerInterval:null, detTimeout:null, backendOnline:false,
+  gazeZone:'MC', lastFaceSeen:null, absentMs:0,
+  absenceDistTrigger:false, lookAwayDistTrigger:false,
+  currentScore:0, scoreSum:0, scoreSamples:0,
+  distractionCount:0, alertCount:0, focusTicks:0, totalTicks:0,
+  expression:'neutral', status:'idle',
+  // Sound alert state
+  distractedSince:null, lastAlertAt:0, soundEnabled:true,
+};
+
+/* ════════════════════════════════════════════════════════════════
+   DOM REFS
+════════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const videoEl       = $('videoEl');
+const overlayCanvas = $('overlayCanvas');
+const ctx           = overlayCanvas.getContext('2d');
+const tlCanvas      = $('timelineCanvas');
+const tlCtx         = tlCanvas.getContext('2d');
+
+/* ════════════════════════════════════════════════════════════════
+   MODEL LOADING
+════════════════════════════════════════════════════════════════ */
+const MODEL_URL = './models';
+
+async function loadModels() {
+  setLoading(true, 'Loading TinyFaceDetector...');
+  await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+  setLoading(true, 'Loading FaceLandmark68...');
+  await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
+  setLoading(true, 'Loading Expressions...');
+  await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+  S.modelsLoaded = true;
+  setLoading(false);
+  addLog('SYSTEM', 'Models loaded ✓', 'info');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   GAZE TRACKING
+════════════════════════════════════════════════════════════════ */
+function computeGazeZone(lm) {
+  const p = lm.positions;
+  const eyeMidX  = (p[36].x + p[45].x) / 2;
+  const eyeWidth = Math.abs(p[45].x - p[36].x);
+  const noseOff  = (p[30].x - eyeMidX) / (eyeWidth + 1e-5);
+  const faceH    = Math.abs(p[8].y - p[27].y);
+  const pitch    = (p[30].y - p[27].y) / (faceH + 1e-5);
+
+  const lPupX = [36,37,38,39,40,41].reduce((s,i)=>s+p[i].x,0)/6;
+  const rPupX = [42,43,44,45,46,47].reduce((s,i)=>s+p[i].x,0)/6;
+  const lW    = Math.abs(p[36].x - p[39].x) + 1e-5;
+  const rW    = Math.abs(p[42].x - p[45].x) + 1e-5;
+  const iris  = ((lPupX - p[36].x)/lW + (rPupX - p[42].x)/rW) / 2;
+
+  let hz = 'C';
+  if      (noseOff < -0.12) hz = 'R';
+  else if (noseOff >  0.12) hz = 'L';
+  if (hz === 'C') {
+    if      (iris < 0.35) hz = 'L';
+    else if (iris > 0.65) hz = 'R';
+  }
+  let vt = 'M';
+  if      (pitch < 0.55) vt = 'T';
+  else if (pitch > 0.72) vt = 'B';
+
+  const MAP = {TC:'TC',TL:'TL',TR:'TR',MC:'MC',ML:'ML',MR:'MR',BC:'BC',BL:'BL',BR:'BR'};
+  return MAP[vt+hz] || 'MC';
+}
+
+/* ════════════════════════════════════════════════════════════════
+   ENGAGEMENT SCORE
+════════════════════════════════════════════════════════════════ */
+const EXPR_W = { neutral:.85, happy:1, surprised:.55, sad:.30, angry:.25, fearful:.25, disgusted:.20 };
+const GAZE_W = { MC:1, TC:.70, BC:.55, ML:.60, MR:.60, TL:.50, TR:.50, BL:.40, BR:.40 };
+
+function computeScore(det) {
+  if (!det) return 0;
+  let topExpr = 'neutral', topVal = 0;
+  for (const [k,v] of Object.entries(det.expressions)) if (v > topVal) { topVal=v; topExpr=k; }
+  S.expression = topExpr;
+  return Math.round(((EXPR_W[topExpr]??0.5)*0.5 + (GAZE_W[S.gazeZone]??0.5)*0.3 + 0.2)*100);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   AUDIO ALERT  (Web Audio API — no external files)
+════════════════════════════════════════════════════════════════ */
+const DISTRACT_THRESHOLD_MS = 7000;   // trigger after 7s continuous distraction
+const ALERT_COOLDOWN_MS     = 12000;  // minimum gap between repeated alerts
+
+const AudioAlert = {
+  _ctx: null,
+
+  _ctx_get() {
+    if (!this._ctx)
+      this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Resume in case browser suspended it (autoplay policy)
+    if (this._ctx.state === 'suspended') this._ctx.resume();
+    return this._ctx;
+  },
+
+  // Two-note descending chime: 660 Hz → 440 Hz
+  play() {
+    const ac = this._ctx_get();
+    [[660, 0, 0.22], [490, 0.22, 0.3]].forEach(([freq, offset, dur]) => {
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.connect(gain);
+      gain.connect(ac.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ac.currentTime + offset);
+      gain.gain.setValueAtTime(0, ac.currentTime + offset);
+      gain.gain.linearRampToValueAtTime(0.28, ac.currentTime + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + offset + dur);
+      osc.start(ac.currentTime + offset);
+      osc.stop(ac.currentTime + offset + dur + 0.05);
+    });
+  },
+};
+
+/* Thin progress bar below the camera showing distraction countdown */
+function updateDistractionBar(pct, alerting = false) {
+  const fill = $('distractionBar');
+  if (!fill) return;
+  fill.style.width = pct + '%';
+  fill.classList.toggle('alerting', alerting);
+}
+
+/* Called every detection frame to check whether to fire the alert */
+function checkDistractionAlert(now) {
+  if (!S.running || S.distractedSince === null) {
+    updateDistractionBar(0, false);
+    return;
+  }
+  const elapsed = now - S.distractedSince;
+  const pct     = Math.min((elapsed / DISTRACT_THRESHOLD_MS) * 100, 100);
+  const over    = elapsed >= DISTRACT_THRESHOLD_MS;
+
+  updateDistractionBar(pct, over);
+
+  if (over && S.soundEnabled && (now - S.lastAlertAt) >= ALERT_COOLDOWN_MS) {
+    S.lastAlertAt = now;
+    AudioAlert.play();
+    addLog('ALERT', `Distracted for ${Math.round(elapsed / 1000)}s`, 'distract');
+    if (S.sessionId) EventAPI.log(S.sessionId, 'alert', `Sound alert — distracted ${Math.round(elapsed/1000)}s`);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   DETECTION LOOP
+════════════════════════════════════════════════════════════════ */
+const TINY_OPTS = () => new faceapi.TinyFaceDetectorOptions({ inputSize:160, scoreThreshold:.4 });
+
+async function detectionLoop() {
+  if (!S.running) return;
+  const now = Date.now();
+
+  let det = null;
+  try {
+    det = await faceapi.detectSingleFace(videoEl, TINY_OPTS())
+      .withFaceLandmarks(true).withFaceExpressions();
+  } catch(_) {}
+
+  const score = computeScore(det);
+  S.currentScore = score;
+  S.scoreSum += score; S.scoreSamples++; S.totalTicks++;
+
+  if (det) {
+    S.lastFaceSeen = now; S.absentMs = 0; S.absenceDistTrigger = false;
+    const zone = computeGazeZone(det.landmarks);
+    S.gazeZone = zone;
+    updateGazeUI(zone);
+
+    if (zone !== 'MC' && zone !== 'TC') {
+      if (!S.lookAwayDistTrigger) {
+        S.lookAwayDistTrigger = true;
+        S.distractionCount++; S.alertCount++;
+        addLog('LOOK_AWAY', `Gaze zone: ${zone}`, 'alert');
+        if (S.sessionId) EventAPI.log(S.sessionId, 'alert', `Looking away — zone ${zone}`);
+      }
+      setStatus('away');
+    } else {
+      S.lookAwayDistTrigger = false;
+      setStatus(score >= 60 ? 'focused' : 'distracted');
+    }
+
+    S.focusTicks += (score >= 60 && (zone === 'MC' || zone === 'TC')) ? 1 : 0;
+    drawOverlay(det);
+  } else {
+    S.absentMs = now - (S.lastFaceSeen || now);
+    updateGazeUI('MC'); setStatus('absent'); clearCanvas();
+    if (S.absentMs > 3000 && !S.absenceDistTrigger) {
+      S.absenceDistTrigger = true; S.distractionCount++;
+      addLog('ABSENT', 'Face absent >3s', 'distract');
+      if (S.sessionId) EventAPI.log(S.sessionId, 'distraction', 'Face absent >3 seconds');
+    }
+  }
+
+  if (S.sessionId) FrameAPI.enqueue(S.sessionId, { score, gaze_zone:S.gazeZone, expression:S.expression, face_present:det?1:0 });
+
+  updateScoreUI(score, !!det);
+  updateMetrics();
+  checkDistractionAlert(now);
+  S.detTimeout = setTimeout(detectionLoop, 120);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   CANVAS DRAWING
+════════════════════════════════════════════════════════════════ */
+function drawOverlay(det) {
+  overlayCanvas.width  = videoEl.videoWidth  || overlayCanvas.offsetWidth;
+  overlayCanvas.height = videoEl.videoHeight || overlayCanvas.offsetHeight;
+  ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+  const box = det.detection.box;
+  const col = S.status==='focused'?'#34d399':S.status==='away'?'#f59e0b':'#f43f5e';
+
+  ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.shadowBlur=0;
+  ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+  ctx.fillStyle = col+'44';
+  det.landmarks.positions.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.2, 0, Math.PI*2); ctx.fill();
+  });
+
+  const nose = det.landmarks.positions[30];
+  ctx.strokeStyle=col+'88'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  ctx.moveTo(nose.x, nose.y);
+  ctx.lineTo(box.x + box.width/2, box.y - 12);
+  ctx.stroke(); ctx.setLineDash([]);
+
+  ctx.fillStyle='rgba(0,0,0,.6)';
+  ctx.fillRect(box.x, box.y-22, 52, 18);
+  ctx.fillStyle=col; ctx.font='500 11px "IBM Plex Mono",monospace';
+  ctx.fillText(`${S.currentScore}%`, box.x+6, box.y-8);
+}
+function clearCanvas() { ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height); }
+
+/* ════════════════════════════════════════════════════════════════
+   TIMELINE CHART
+════════════════════════════════════════════════════════════════ */
+const TL_MAX = 120;
+let tlData = [];
+
+function pushTimeline(v) { tlData.push(v); if (tlData.length>TL_MAX) tlData.shift(); drawTimeline(); }
+setInterval(() => { if (S.running) pushTimeline(S.currentScore); }, 1000);
+
+function drawTimeline() {
+  const dpr = devicePixelRatio || 1;
+  const W = tlCanvas.offsetWidth * dpr, H = 80 * dpr;
+  tlCanvas.width = W; tlCanvas.height = H;
+  tlCtx.clearRect(0, 0, W, H);
+  if (tlData.length < 2) return;
+
+  const pad=2*dpr, stepX=(W-pad*2)/(TL_MAX-1), maxY=H-pad;
+
+  const grad = tlCtx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,'rgba(59,130,246,.18)'); grad.addColorStop(1,'rgba(59,130,246,0)');
+
+  tlCtx.beginPath();
+  tlData.forEach((v,i) => {
+    const x=pad+i*stepX, y=maxY-(v/100)*(maxY-pad);
+    i===0?tlCtx.moveTo(x,y):tlCtx.lineTo(x,y);
+  });
+  const lx=pad+(tlData.length-1)*stepX;
+  tlCtx.lineTo(lx,H); tlCtx.lineTo(pad,H); tlCtx.closePath();
+  tlCtx.fillStyle=grad; tlCtx.fill();
+
+  tlCtx.beginPath();
+  tlData.forEach((v,i) => {
+    const x=pad+i*stepX, y=maxY-(v/100)*(maxY-pad);
+    i===0?tlCtx.moveTo(x,y):tlCtx.lineTo(x,y);
+  });
+  tlCtx.strokeStyle='#3b82f6'; tlCtx.lineWidth=1.5*dpr; tlCtx.lineJoin='round'; tlCtx.stroke();
+
+  const ty=maxY-0.6*(maxY-pad);
+  tlCtx.strokeStyle='rgba(245,158,11,.28)'; tlCtx.lineWidth=dpr;
+  tlCtx.setLineDash([4*dpr,4*dpr]);
+  tlCtx.beginPath(); tlCtx.moveTo(pad,ty); tlCtx.lineTo(W-pad,ty); tlCtx.stroke();
+  tlCtx.setLineDash([]);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   UI HELPERS
+════════════════════════════════════════════════════════════════ */
+function setLoading(on, txt='') {
+  $('loadingOverlay').classList.toggle('active', on);
+  if (txt) $('loadingText').textContent = txt;
+}
+
+function setStatus(s) {
+  if (S.status===s) return; S.status=s;
+  const MAP = {
+    focused:{cls:'focused',label:'Focused'},
+    distracted:{cls:'distracted',label:'Distracted'},
+    away:{cls:'away',label:'Looking away'},
+    absent:{cls:'distracted',label:'Face absent'},
+    idle:{cls:'idle',label:'Idle'},
+  };
+  const {cls,label} = MAP[s]||MAP.idle;
+  $('statusPill').className=`status-pill ${cls}`;
+  $('statusPill').textContent=label;
+  $('camLabel').textContent=label;
+
+  // Track continuous distraction window for sound alert
+  const isDistracted = (s === 'away' || s === 'distracted' || s === 'absent');
+  if (isDistracted && S.distractedSince === null) {
+    S.distractedSince = Date.now();
+  } else if (!isDistracted) {
+    S.distractedSince = null;
+    S.lastAlertAt = 0;
+    updateDistractionBar(0, false);
+  }
+}
+
+const GAZE_LABELS = {MC:'Center',ML:'Left',MR:'Right',TC:'Up',TL:'Up-Left',TR:'Up-Right',BC:'Down',BL:'Down-Left',BR:'Down-Right'};
+function updateGazeUI(zone) {
+  document.querySelectorAll('.gaze-cell').forEach(el => el.classList.remove('active','active-warn'));
+  const cell = document.querySelector(`[data-pos="${zone}"]`);
+  if (cell) cell.classList.add(zone==='MC'?'active':'active-warn');
+  const lbl = GAZE_LABELS[zone]||zone;
+  $('gazeZoneVal').textContent  = lbl;
+  $('gazeZoneVal2').textContent = lbl;
+}
+
+function updateScoreUI(score, hasFace) {
+  const ring = $('scoreRingFill');
+  ring.style.strokeDashoffset = 283 * (1 - score/100);
+  const col = score>=70?'var(--success)':score>=40?'var(--warning)':'var(--danger)';
+  ring.style.stroke = col;
+  $('scoreNum').style.color = col;
+  $('scoreNum').textContent  = hasFace ? score : '--';
+  $('focusStateVal').textContent = S.status.charAt(0).toUpperCase() + S.status.slice(1);
+  $('focusStateVal').style.color = col;
+  $('expressionVal').textContent = S.expression.charAt(0).toUpperCase() + S.expression.slice(1);
+  const absSec = Math.round(S.absentMs/1000);
+  $('absentTimeVal').textContent = absSec>0?`${absSec}s`:'0s';
+  $('absentTimeVal').style.color = absSec>3?'var(--danger)':'var(--text-3)';
+}
+
+function updateMetrics() {
+  const fp = S.totalTicks>0 ? Math.round((S.focusTicks/S.totalTicks)*100) : 0;
+  const av = S.scoreSamples>0 ? Math.round(S.scoreSum/S.scoreSamples) : 0;
+  $('metFocusPct').textContent     = fp+'%';
+  $('metDistractions').textContent = S.distractionCount;
+  $('metAvgScore').textContent     = S.scoreSamples>0 ? av : '--';
+  $('metAlerts').textContent       = S.alertCount;
+}
+
+function elapsed() {
+  if (!S.sessionStart) return '--:--';
+  const sec = Math.floor((Date.now()-S.sessionStart)/1000);
+  return `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+}
+
+function addLog(tag, msg, type) {
+  const list=$('logList');
+  const cls={info:'tag-info',alert:'tag-alert',distract:'tag-distract',focused:'tag-focused'}[type]||'tag-info';
+  const el=document.createElement('div');
+  el.className='log-entry';
+  el.innerHTML=`<span class="log-time">${elapsed()}</span><span class="log-tag ${cls}">${tag}</span><span>${msg}</span>`;
+  list.appendChild(el);
+  list.scrollTop=list.scrollHeight;
+  while(list.children.length>60) list.removeChild(list.firstChild);
+}
+
+function updateBadge(state) {
+  const b=$('sessionBadge');
+  const map={standby:{cls:'',lbl:'Standby'},live:{cls:'live',lbl:'Live'},ended:{cls:'ended',lbl:'Ended'}};
+  const {cls,lbl}=map[state]||map.standby;
+  b.className=`session-badge ${cls}`;
+  b.innerHTML=`<span class="dot"></span>${lbl}`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   SESSION MANAGEMENT
+════════════════════════════════════════════════════════════════ */
+async function startSession() {
+  if (!S.modelsLoaded) { addLog('SYSTEM','Models not ready','info'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{width:640,height:480,facingMode:'user'} });
+    videoEl.srcObject = stream;
+    await new Promise(r => videoEl.onloadedmetadata = r);
+    videoEl.play();
+  } catch(e) { addLog('ERROR','Camera denied: '+e.message,'distract'); return; }
+
+  Object.assign(S, {
+    running:true, sessionId:null, sessionStart:Date.now(),
+    lastFaceSeen:Date.now(), absentMs:0,
+    absenceDistTrigger:false, lookAwayDistTrigger:false,
+    gazeZone:'MC', currentScore:0, scoreSum:0, scoreSamples:0,
+    distractionCount:0, alertCount:0, focusTicks:0, totalTicks:0,
+    expression:'neutral', status:'focused',
+    distractedSince:null, lastAlertAt:0,
+  });
+  tlData=[];
+
+  if (S.backendOnline) {
+    try {
+      const r = await SessionAPI.create('default');
+      S.sessionId = r.session_id;
+      addLog('API', `Session ${S.sessionId.slice(0,8)}…`, 'info');
+    } catch(e) { addLog('API','Backend: '+e.message,'distract'); }
+  }
+
+  $('camPlaceholder').style.display='none';
+  $('btnStart').disabled=true;
+  $('btnEnd').disabled=false;
+  $('btnExport').disabled=true;
+  $('historyPanel').style.display='none';
+  updateBadge('live'); setStatus('focused');
+
+  S.timerInterval = setInterval(() => {
+    const sec=Math.floor((Date.now()-S.sessionStart)/1000);
+    const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+    $('timerDisplay').textContent=[h,m,s].map(n=>String(n).padStart(2,'0')).join(':');
+  }, 1000);
+
+  detectionLoop();
+  addLog('SYSTEM','Session started','info');
+}
+
+async function endSession() {
+  S.running=false;
+  clearTimeout(S.detTimeout); clearInterval(S.timerInterval);
+
+  if (S.sessionId) await FrameAPI.flush(S.sessionId);
+
+  if (S.sessionId) {
+    const fp=S.totalTicks>0?Math.round((S.focusTicks/S.totalTicks)*100):0;
+    const av=S.scoreSamples>0?Math.round(S.scoreSum/S.scoreSamples):0;
+    const dur=Math.round((Date.now()-S.sessionStart)/1000);
+    try {
+      await SessionAPI.end(S.sessionId, {
+        focus_pct:fp, avg_score:av, duration_s:dur,
+        distraction_count:S.distractionCount, alert_count:S.alertCount,
+        total_frames:S.totalTicks, focused_frames:S.focusTicks,
+      });
+      addLog('API','Session saved to backend','info');
+    } catch(e) { addLog('API','Save failed: '+e.message,'distract'); }
+  }
+
+  if (videoEl.srcObject) { videoEl.srcObject.getTracks().forEach(t=>t.stop()); videoEl.srcObject=null; }
+  clearCanvas();
+  $('btnStart').disabled=false; $('btnEnd').disabled=true; $('btnExport').disabled=false;
+  $('camPlaceholder').style.display='flex';
+  $('camLabel').textContent='Session ended';
+  updateBadge('ended'); setStatus('idle');
+  addLog('SYSTEM','Session ended','info');
+  loadHistory();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   EXPORT / REPORT
+════════════════════════════════════════════════════════════════ */
+function buildLocalReport() {
+  const dur=S.sessionStart?Date.now()-S.sessionStart:0;
+  const fp=S.totalTicks>0?Math.round((S.focusTicks/S.totalTicks)*100):0;
+  const av=S.scoreSamples>0?Math.round(S.scoreSum/S.scoreSamples):0;
+  return {
+    session:{ started_at:new Date(S.sessionStart||Date.now()).toISOString(), duration_seconds:Math.round(dur/1000) },
+    focus:{ focus_percentage:fp, average_engagement_score:av, total_frames_analyzed:S.totalTicks, focused_frames:S.focusTicks },
+    distractions:{ total_distraction_events:S.distractionCount, look_away_alerts:S.alertCount, face_absence_events:S.distractionCount-S.alertCount },
+    engagement:{
+      grade:av>=75?'HIGH':av>=50?'MEDIUM':'LOW',
+      recommendation:av>=75?'Excellent focus maintained.':av>=50?'Moderate engagement — reduce distractions.':'Low engagement — try focus sprints.',
+    },
+  };
+}
+
+function syntaxHL(obj) {
+  return JSON.stringify(obj,null,2)
+    .replace(/"([^"]+)":/g,'<span class="k">"$1":</span>')
+    .replace(/: "([^"]*)"/g,': <span class="vs">"$1"</span>')
+    .replace(/: (\d+\.?\d*)/g,': <span class="vn">$1</span>')
+    .replace(/: (true|false|null)/g,': <span class="vn">$1</span>');
+}
+
+async function openExport() {
+  $('exportModal').classList.add('open');
+  $('jsonOutput').innerHTML='<span style="color:var(--text-3)">Loading…</span>';
+  let report;
+  if (S.sessionId && S.backendOnline) {
+    try { report = await ReportAPI.report(S.sessionId); } catch { report=buildLocalReport(); }
+  } else { report=buildLocalReport(); }
+  $('jsonOutput').innerHTML=syntaxHL(report);
+  window._report=report;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   HISTORY
+════════════════════════════════════════════════════════════════ */
+async function loadHistory() {
+  if (!S.backendOnline) return;
+  try {
+    const [sessions, summary] = await Promise.all([
+      SessionAPI.list('default', 8),
+      ReportAPI.summary('default'),
+    ]);
+    $('summAvgFocus').textContent  = summary.avg_focus_pct!=null?summary.avg_focus_pct+'%':'--';
+    $('summAvgScore').textContent  = summary.avg_score!=null?summary.avg_score:'--';
+    $('summSessions').textContent  = summary.total_sessions||0;
+    $('summDistracts').textContent = summary.total_distractions||0;
+    const tbody=$('historyBody'); tbody.innerHTML='';
+    sessions.forEach(s => {
+      const dur=s.duration_s?`${Math.floor(s.duration_s/60)}m ${s.duration_s%60}s`:'--';
+      const grade=s.avg_score>=75?'HIGH':s.avg_score>=50?'MED':'LOW';
+      const gc=s.avg_score>=75?'var(--success)':s.avg_score>=50?'var(--warning)':'var(--danger)';
+      const date=s.started_at?new Date(s.started_at).toLocaleDateString():'--';
+      tbody.innerHTML+=`<tr><td>${date}</td><td>${dur}</td><td>${s.focus_pct!=null?s.focus_pct+'%':'--'}</td><td>${s.avg_score??'--'}</td><td><span style="color:${gc};font-weight:600">${grade}</span></td><td>${s.distraction_count||0}</td></tr>`;
+    });
+    $('historyPanel').style.display='block';
+  } catch(_) {}
+}
+
+/* ════════════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════════════ */
+window.addEventListener('load', async () => {
+  drawTimeline();
+
+  S.backendOnline = await checkBackend();
+  const badge=$('backendBadge');
+  badge.textContent = S.backendOnline ? '● API Online' : '● Offline Mode';
+  badge.style.color  = S.backendOnline ? 'var(--success)' : 'var(--danger)';
+  addLog('SYSTEM', S.backendOnline ? 'Backend connected' : 'Backend offline — local mode', 'info');
+
+  try { await loadModels(); } catch(e) { addLog('ERROR','Model load failed: '+e.message,'distract'); }
+
+  if (S.backendOnline) loadHistory();
+
+  $('btnStart').addEventListener('click', startSession);
+  $('btnEnd').addEventListener('click', endSession);
+  $('btnExport').addEventListener('click', openExport);
+
+  $('soundToggle').addEventListener('click', () => {
+    S.soundEnabled = !S.soundEnabled;
+    $('soundToggle').classList.toggle('muted', !S.soundEnabled);
+    $('iconSoundOn').style.display  = S.soundEnabled ? '' : 'none';
+    $('iconSoundOff').style.display = S.soundEnabled ? 'none' : '';
+    // Prime the AudioContext on first user interaction
+    if (S.soundEnabled) AudioAlert._ctx_get();
+    addLog('SYSTEM', `Sound alerts ${S.soundEnabled ? 'enabled' : 'muted'}`, 'info');
+  });
+
+  $('btnCloseModal').addEventListener('click', () => $('exportModal').classList.remove('open'));
+  $('exportModal').addEventListener('click', e => { if (e.target===$('exportModal')) $('exportModal').classList.remove('open'); });
+
+  $('btnCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(JSON.stringify(window._report,null,2)).then(() => {
+      $('btnCopy').textContent='Copied!';
+      setTimeout(()=>$('btnCopy').textContent='Copy JSON',2000);
+    });
+  });
+
+  $('btnDownload').addEventListener('click', () => {
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(window._report,null,2)],{type:'application/json'}));
+    a.download=`focuslens-${Date.now()}.json`; a.click();
+  });
+});
+</script>
+</body>
+</html>

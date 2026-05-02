@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "FocusLens",
+  "version": "1.0",
+  "description": "Meeting distraction tracker",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": ["activeTab", "scripting", "camera"],
+  "host_permissions": [
+    "http://127.0.0.1:5000/*"
+  ]
+}
